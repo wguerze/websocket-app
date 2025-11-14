@@ -48,19 +48,17 @@ async fn main() {
         }
 
         match parse_command(input) {
-            Ok(Command::Connect) => {
-                match create_connection(next_id, SERVER_URL).await {
-                    Ok((id, tx, handle)) => {
-                        connections.insert(id, Connection { id, tx });
-                        tokio::spawn(handle);
-                        println!("{} Connection #{} established", "✓".green(), id);
-                        next_id += 1;
-                    }
-                    Err(e) => {
-                        println!("{} Failed to connect: {}", "✗".red(), e);
-                    }
+            Ok(Command::Connect) => match create_connection(next_id, SERVER_URL).await {
+                Ok((id, tx, handle)) => {
+                    connections.insert(id, Connection { id, tx });
+                    tokio::spawn(handle);
+                    println!("{} Connection #{} established", "✓".green(), id);
+                    next_id += 1;
                 }
-            }
+                Err(e) => {
+                    println!("{} Failed to connect: {}", "✗".red(), e);
+                }
+            },
             Ok(Command::ConnectMultiple(count)) => {
                 if count == 0 || count > 20 {
                     println!("{} Please specify a number between 1 and 20", "✗".red());
@@ -260,20 +258,49 @@ fn parse_command(input: &str) -> Result<Command, String> {
         }
         "help" | "h" => Ok(Command::Help),
         "quit" | "exit" | "q" => Ok(Command::Quit),
-        _ => Err(format!("Unknown command: '{}'. Type 'help' for available commands", parts[0])),
+        _ => Err(format!(
+            "Unknown command: '{}'. Type 'help' for available commands",
+            parts[0]
+        )),
     }
 }
 
 fn print_help() {
     println!("\n{}", "Available Commands:".bright_yellow().bold());
-    println!("  {}  {}  - Create a new WebSocket connection", "connect".bright_cyan(), "[count]".dimmed());
-    println!("  {}     {}  - Alias for connect", "c".bright_cyan(), "[count]".dimmed());
-    println!("  {}    {}  - Close a connection (or 'all')", "close".bright_cyan(), "<id|all>".dimmed());
-    println!("  {}          - List all active connections", "list".bright_cyan());
+    println!(
+        "  {}  {}  - Create a new WebSocket connection",
+        "connect".bright_cyan(),
+        "[count]".dimmed()
+    );
+    println!(
+        "  {}     {}  - Alias for connect",
+        "c".bright_cyan(),
+        "[count]".dimmed()
+    );
+    println!(
+        "  {}    {}  - Close a connection (or 'all')",
+        "close".bright_cyan(),
+        "<id|all>".dimmed()
+    );
+    println!(
+        "  {}          - List all active connections",
+        "list".bright_cyan()
+    );
     println!("  {}            - Alias for list", "ls".bright_cyan());
-    println!("  {} {} - Send a message to a connection", "send".bright_cyan(), "<id> <message>".dimmed());
-    println!("  {}      {} - Alias for send", "s".bright_cyan(), "<id> <message>".dimmed());
-    println!("  {}          - Show this help message", "help".bright_cyan());
+    println!(
+        "  {} {} - Send a message to a connection",
+        "send".bright_cyan(),
+        "<id> <message>".dimmed()
+    );
+    println!(
+        "  {}      {} - Alias for send",
+        "s".bright_cyan(),
+        "<id> <message>".dimmed()
+    );
+    println!(
+        "  {}          - Show this help message",
+        "help".bright_cyan()
+    );
     println!("  {}            - Alias for help", "h".bright_cyan());
     println!("  {}    - Quit the client", "quit".bright_cyan());
     println!("  {}    - Alias for quit", "exit".bright_cyan());

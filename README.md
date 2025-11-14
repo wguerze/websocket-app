@@ -262,3 +262,25 @@ websocket-app/
 ## License
 
 See LICENSE file for details.
+
+
+
+
+🚀 Quick Start
+
+  Run tests:
+  cargo test --bin server
+
+  Build Docker image:
+  docker build -t websocket-server .
+  docker run -p 8080:8080 websocket-server
+
+  Trigger CI/CD:
+  git add .
+  git commit -m "Add CI/CD pipeline"
+  git push origin main
+
+  The pipeline will automatically:
+  1. Run all tests with caching (~30-60s after first run)
+  2. Build Docker image if tests pass
+  3. Push to ghcr.io/YOUR_USERNAME/websocket-app:latest

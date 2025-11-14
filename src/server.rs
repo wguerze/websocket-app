@@ -70,7 +70,14 @@ pub async fn run_server(config: ServerConfig) {
                 match permit {
                     Ok(permit) => {
                         tokio::spawn(async move {
-                            handle_connection(stream, addr, active_conn, permit, config.ping_interval_secs).await;
+                            handle_connection(
+                                stream,
+                                addr,
+                                active_conn,
+                                permit,
+                                config.ping_interval_secs,
+                            )
+                            .await;
                         });
                     }
                     Err(_) => {
@@ -115,7 +122,10 @@ pub async fn handle_connection(
     let (mut write, mut read) = ws_stream.split();
 
     // Send initial welcome message
-    if let Err(e) = write.send(Message::Text("Connected to WebSocket server".to_string())).await {
+    if let Err(e) = write
+        .send(Message::Text("Connected to WebSocket server".to_string()))
+        .await
+    {
         error!("Failed to send welcome message to {}: {}", addr, e);
         decrement_counter(active_connections, addr).await;
         return;
@@ -238,9 +248,7 @@ mod tests {
         tokio::spawn(async move {
             if let Ok((stream, client_addr)) = listener.accept().await {
                 let active_connections = Arc::new(tokio::sync::RwLock::new(0u32));
-                let permit = Arc::new(Semaphore::new(10))
-                    .try_acquire_owned()
-                    .unwrap();
+                let permit = Arc::new(Semaphore::new(10)).try_acquire_owned().unwrap();
                 handle_connection(stream, client_addr, active_connections, permit, 30).await;
             }
         });
@@ -258,11 +266,8 @@ mod tests {
         assert!(connect_result.is_ok(), "Should connect to server");
         if let Ok(Ok((mut ws_stream, _))) = connect_result {
             // Receive welcome message
-            if let Ok(Some(Ok(msg))) = timeout(
-                tokio::time::Duration::from_secs(2),
-                ws_stream.next(),
-            )
-            .await
+            if let Ok(Some(Ok(msg))) =
+                timeout(tokio::time::Duration::from_secs(2), ws_stream.next()).await
             {
                 if let Message::Text(text) = msg {
                     assert_eq!(text, "Connected to WebSocket server");
