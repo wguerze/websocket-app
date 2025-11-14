@@ -1,0 +1,35 @@
+# Git
+.git
+.gitignore
+.github
+
+# Rust build artifacts
+target/
+debug/
+**/*.rs.bk
+
+# Documentation
+README.md
+LICENSE
+*.md
+
+# Audio files (not needed for server)
+audio/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# CI/CD
+.github/
+
+# Docker
+Dockerfile
+.dockerignore
