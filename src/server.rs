@@ -223,7 +223,7 @@ mod tests {
     #[test]
     fn test_server_config_default() {
         let config = ServerConfig::default();
-        assert_eq!(config.addr, "127.0.0.1:8080");
+        assert_eq!(config.addr, "0.0.0.0:8080");
         assert_eq!(config.max_connections, MAX_CONNECTIONS);
         assert_eq!(config.ping_interval_secs, PING_INTERVAL_SECS);
     }
