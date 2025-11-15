@@ -1,0 +1,21 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: websocket-server
+  labels:
+    app: websocket-server
+    app.kubernetes.io/name: websocket-server
+    app.kubernetes.io/component: server
+spec:
+  type: ClusterIP
+  selector:
+    app: websocket-server
+  ports:
+  - name: websocket
+    port: 8080
+    targetPort: 8080
+    protocol: TCP
+  sessionAffinity: ClientIP
+  sessionAffinityConfig:
+    clientIP:
+      timeoutSeconds: 10800

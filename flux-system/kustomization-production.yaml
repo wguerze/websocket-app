@@ -1,0 +1,23 @@
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: websocket-app-production
+  namespace: flux-system
+spec:
+  interval: 30m0s
+  path: ./k8s/overlays/production
+  prune: true
+  sourceRef:
+    kind: GitRepository
+    name: websocket-app
+  targetNamespace: websocket-app-production
+  healthChecks:
+  - apiVersion: apps/v1
+    kind: Deployment
+    name: prod-websocket-server
+    namespace: websocket-app-production
+  timeout: 5m0s
+  wait: true
+  # Suspend production deployments by default - require manual approval
+  suspend: false

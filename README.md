@@ -75,6 +75,56 @@ cargo test --bin server
 cargo tarpaulin --bin server
 ```
 
+## Kubernetes Deployment & GitOps
+
+The project includes complete Kubernetes manifests with Kustomize overlays and FluxCD GitOps configuration for automated deployments.
+
+### Quick Deploy to Kubernetes
+
+**Manual deployment:**
+```bash
+# Deploy to development environment
+./scripts/deploy-manual.sh dev
+
+# Deploy to staging
+./scripts/deploy-manual.sh staging
+
+# Deploy to production
+./scripts/deploy-manual.sh production
+```
+
+**GitOps with FluxCD:**
+```bash
+# Bootstrap FluxCD (one-time setup)
+export GITHUB_TOKEN=<your-token>
+./scripts/setup-flux.sh
+
+# FluxCD will automatically deploy and keep environments in sync with Git
+# Watch deployments
+flux logs --follow
+```
+
+### Environments
+
+| Environment | Namespace | Replicas | Image Tag | Resources |
+|-------------|-----------|----------|-----------|-----------|
+| Development | `websocket-app-dev` | 1 | `develop` | Minimal |
+| Staging | `websocket-app-staging` | 2 | `staging` | Standard |
+| Production | `websocket-app-production` | 3 | `latest` | High |
+
+### Features
+
+- ✅ Kustomize overlays for dev/staging/production
+- ✅ FluxCD GitOps automation
+- ✅ Automatic image updates on push
+- ✅ Health checks and resource limits
+- ✅ Security best practices (non-root, read-only filesystem)
+- ✅ Service with session affinity for WebSocket connections
+
+📖 **Complete documentation**: See [DEPLOYMENT.md](./DEPLOYMENT.md)
+
+📁 **Kubernetes manifests**: See [k8s/README.md](./k8s/README.md)
+
 ## Requirements
 
 - Rust 1.70+ (with Cargo)

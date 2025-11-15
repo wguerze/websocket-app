@@ -1,0 +1,13 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: websocket-server
+spec:
+  template:
+    spec:
+      containers:
+      - name: websocket-server
+        image: ghcr.io/williamguerzeder/websocket-app:staging
+        env:
+        - name: RUST_LOG
+          value: "info"

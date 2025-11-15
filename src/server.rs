@@ -19,8 +19,11 @@ pub struct ServerConfig {
 
 impl Default for ServerConfig {
     fn default() -> Self {
+        // Read bind address from environment variable, default to 0.0.0.0:8080 for containers
+        let addr = std::env::var("BIND_ADDR").unwrap_or_else(|_| "0.0.0.0:8080".to_string());
+
         Self {
-            addr: "127.0.0.1:8080".to_string(),
+            addr,
             max_connections: MAX_CONNECTIONS,
             ping_interval_secs: PING_INTERVAL_SECS,
         }

@@ -1,0 +1,15 @@
+---
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: GitRepository
+metadata:
+  name: websocket-app
+  namespace: flux-system
+spec:
+  interval: 1m0s
+  ref:
+    branch: main
+  url: https://github.com/williamguerzeder/websocket-app
+  ignore: |
+    # Ignore everything except k8s directory
+    /*
+    !/k8s
