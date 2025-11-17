@@ -40,8 +40,8 @@ RUN chown -R appuser:appuser /app
 # Switch to non-root user
 USER appuser
 
-# Expose the WebSocket port
-EXPOSE 8080
+# Expose the WebSocket port and health check port
+EXPOSE 8080 8081
 
 # Set environment variables
 ENV RUST_LOG=info

@@ -39,6 +39,10 @@ async fn main() {
         .init();
 
     let config = ServerConfig::default();
+
+    // Start health check server on port 8081
+    tokio::spawn(run_health_server());
+
     run_server(config).await;
 }
 
@@ -228,6 +232,44 @@ async fn send_503_response(mut stream: TcpStream) -> std::io::Result<()> {
     stream.flush().await?;
     stream.shutdown().await?;
     Ok(())
+}
+
+pub async fn run_health_server() {
+    let health_addr = "0.0.0.0:8081";
+    let listener = match TcpListener::bind(health_addr).await {
+        Ok(l) => l,
+        Err(e) => {
+            error!(
+                "Failed to bind health check server to {}: {}",
+                health_addr, e
+            );
+            return;
+        }
+    };
+
+    info!("Health check server listening on: {}", health_addr);
+
+    loop {
+        match listener.accept().await {
+            Ok((mut stream, _)) => {
+                tokio::spawn(async move {
+                    let response = "HTTP/1.1 200 OK\r\n\
+                                    Content-Type: text/plain\r\n\
+                                    Content-Length: 2\r\n\
+                                    Connection: close\r\n\
+                                    \r\n\
+                                    OK";
+
+                    let _ = stream.write_all(response.as_bytes()).await;
+                    let _ = stream.flush().await;
+                    let _ = stream.shutdown().await;
+                });
+            }
+            Err(e) => {
+                error!("Failed to accept health check connection: {}", e);
+            }
+        }
+    }
 }
 
 #[cfg(test)]

@@ -323,7 +323,11 @@ fn print_help() {
     println!();
     println!("{}", "Note:".bright_yellow().bold());
     println!("  Use --server or -s flag to specify a custom server URL:");
-    println!("  {} {}", "cargo run --bin client -- --server".dimmed(), "ws://example.com".bright_cyan());
+    println!(
+        "  {} {}",
+        "cargo run --bin client -- --server".dimmed(),
+        "ws://example.com".bright_cyan()
+    );
     println!("\n{}", "Examples:".bright_yellow().bold());
     println!("  connect       - Create 1 connection");
     println!("  connect 5     - Create 5 connections");

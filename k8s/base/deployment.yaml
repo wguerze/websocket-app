@@ -26,6 +26,9 @@ spec:
         - name: websocket
           containerPort: 8080
           protocol: TCP
+        - name: health
+          containerPort: 8081
+          protocol: TCP
         env:
         - name: RUST_LOG
           value: "info"
@@ -37,24 +40,30 @@ spec:
             memory: "128Mi"
             cpu: "500m"
         startupProbe:
-          tcpSocket:
-            port: 8080
+          httpGet:
+            path: /health
+            port: 8081
+            scheme: HTTP
           initialDelaySeconds: 0
           periodSeconds: 2
           timeoutSeconds: 1
           failureThreshold: 30
           successThreshold: 1
         livenessProbe:
-          tcpSocket:
-            port: 8080
+          httpGet:
+            path: /health
+            port: 8081
+            scheme: HTTP
           initialDelaySeconds: 0
           periodSeconds: 10
           timeoutSeconds: 1
           failureThreshold: 3
           successThreshold: 1
         readinessProbe:
-          tcpSocket:
-            port: 8080
+          httpGet:
+            path: /health
+            port: 8081
+            scheme: HTTP
           initialDelaySeconds: 0
           periodSeconds: 5
           timeoutSeconds: 1
