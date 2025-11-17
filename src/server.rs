@@ -1,9 +1,11 @@
 use futures_util::{SinkExt, StreamExt};
 use log::{error, info, warn};
 use std::net::SocketAddr;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tokio::io::AsyncWriteExt;
 use tokio::net::{TcpListener, TcpStream};
+use tokio::signal::unix::{signal, SignalKind};
 use tokio::sync::Semaphore;
 use tokio::time::{interval, Duration};
 use tokio_tungstenite::accept_async;
@@ -11,6 +13,7 @@ use tokio_tungstenite::tungstenite::Message;
 
 pub const MAX_CONNECTIONS: usize = 10;
 pub const PING_INTERVAL_SECS: u64 = 30;
+pub const SHUTDOWN_GRACE_PERIOD_SECS: u64 = 3600; // Maximum time to wait for connections to drain
 
 pub struct ServerConfig {
     pub addr: String,
@@ -43,17 +46,77 @@ async fn main() {
     // Shared active connections counter for both WebSocket server and health checks
     let active_connections = Arc::new(tokio::sync::RwLock::new(0u32));
 
-    // Start health check server on port 8081
-    let health_active_conn = active_connections.clone();
-    let health_max_conn = config.max_connections;
+    // Shutdown flag for graceful termination
+    let shutting_down = Arc::new(AtomicBool::new(false));
+
+    // Setup SIGTERM handler for graceful shutdown
+    let shutdown_flag = shutting_down.clone();
+    let shutdown_active_conn = active_connections.clone();
     tokio::spawn(async move {
-        run_health_server(health_active_conn, health_max_conn).await;
+        handle_shutdown_signal(shutdown_flag, shutdown_active_conn).await;
     });
 
-    run_server(config, active_connections).await;
+    // Start health check server on port 8081
+    let health_active_conn = active_connections.clone();
+    let health_shutdown = shutting_down.clone();
+    let health_max_conn = config.max_connections;
+    tokio::spawn(async move {
+        run_health_server(health_active_conn, health_max_conn, health_shutdown).await;
+    });
+
+    run_server(config, active_connections, shutting_down).await;
 }
 
-pub async fn run_server(config: ServerConfig, active_connections: Arc<tokio::sync::RwLock<u32>>) {
+async fn handle_shutdown_signal(
+    shutting_down: Arc<AtomicBool>,
+    active_connections: Arc<tokio::sync::RwLock<u32>>,
+) {
+    let mut sigterm = signal(SignalKind::terminate()).expect("Failed to setup SIGTERM handler");
+
+    sigterm.recv().await;
+    info!("Received SIGTERM signal - initiating graceful shutdown");
+
+    // Mark as shutting down immediately
+    shutting_down.store(true, Ordering::SeqCst);
+    info!("Server marked as shutting down - readiness probe will now fail");
+
+    // Wait for connections to drain or timeout
+    let shutdown_start = std::time::Instant::now();
+    let grace_period = Duration::from_secs(SHUTDOWN_GRACE_PERIOD_SECS);
+
+    loop {
+        let current_connections = *active_connections.read().await;
+
+        if current_connections == 0 {
+            info!("All connections closed - graceful shutdown complete");
+            std::process::exit(0);
+        }
+
+        let elapsed = shutdown_start.elapsed();
+        if elapsed >= grace_period {
+            warn!(
+                "Grace period expired ({} seconds) with {} active connections - forcing shutdown",
+                SHUTDOWN_GRACE_PERIOD_SECS, current_connections
+            );
+            std::process::exit(0);
+        }
+
+        info!(
+            "Waiting for {} connections to close... ({}/{} seconds elapsed)",
+            current_connections,
+            elapsed.as_secs(),
+            SHUTDOWN_GRACE_PERIOD_SECS
+        );
+
+        tokio::time::sleep(Duration::from_secs(5)).await;
+    }
+}
+
+pub async fn run_server(
+    config: ServerConfig,
+    active_connections: Arc<tokio::sync::RwLock<u32>>,
+    shutting_down: Arc<AtomicBool>,
+) {
     let listener = TcpListener::bind(&config.addr)
         .await
         .expect("Failed to bind");
@@ -78,6 +141,18 @@ pub async fn run_server(config: ServerConfig, active_connections: Arc<tokio::syn
     loop {
         match listener.accept().await {
             Ok((stream, addr)) => {
+                // Check if shutting down - reject new connections
+                if shutting_down.load(Ordering::SeqCst) {
+                    info!(
+                        "Rejecting new connection from {} - server is shutting down",
+                        addr
+                    );
+                    tokio::spawn(async move {
+                        let _ = send_shutdown_response(stream).await;
+                    });
+                    continue;
+                }
+
                 let permit = connection_limit.clone().try_acquire_owned();
                 let active_conn = active_connections.clone();
 
@@ -240,9 +315,24 @@ async fn send_503_response(mut stream: TcpStream) -> std::io::Result<()> {
     Ok(())
 }
 
+async fn send_shutdown_response(mut stream: TcpStream) -> std::io::Result<()> {
+    let response = "HTTP/1.1 503 Service Unavailable\r\n\
+                    Content-Type: text/plain\r\n\
+                    Content-Length: 42\r\n\
+                    Connection: close\r\n\
+                    \r\n\
+                    Server is shutting down - draining connections";
+
+    stream.write_all(response.as_bytes()).await?;
+    stream.flush().await?;
+    stream.shutdown().await?;
+    Ok(())
+}
+
 pub async fn run_health_server(
     active_connections: Arc<tokio::sync::RwLock<u32>>,
     max_connections: usize,
+    shutting_down: Arc<AtomicBool>,
 ) {
     let health_addr = "0.0.0.0:8081";
     let listener = match TcpListener::bind(health_addr).await {
@@ -263,8 +353,9 @@ pub async fn run_health_server(
             Ok((stream, _)) => {
                 let active_conn = active_connections.clone();
                 let max_conn = max_connections;
+                let shutdown = shutting_down.clone();
                 tokio::spawn(async move {
-                    handle_health_request(stream, active_conn, max_conn).await;
+                    handle_health_request(stream, active_conn, max_conn, shutdown).await;
                 });
             }
             Err(e) => {
@@ -278,6 +369,7 @@ async fn handle_health_request(
     mut stream: TcpStream,
     active_connections: Arc<tokio::sync::RwLock<u32>>,
     max_connections: usize,
+    shutting_down: Arc<AtomicBool>,
 ) {
     use tokio::io::AsyncReadExt;
 
@@ -295,43 +387,62 @@ async fn handle_health_request(
         request.starts_with("GET /readiness") || request.starts_with("HEAD /readiness");
 
     let response = if is_readiness {
-        // Check if pod can accept more connections
-        let current_connections = *active_connections.read().await;
-
-        if current_connections >= max_connections as u32 {
-            // Pod is at capacity - mark as not ready
+        // Check if shutting down - fail readiness immediately
+        if shutting_down.load(Ordering::SeqCst) {
+            let current_connections = *active_connections.read().await;
             format!(
                 "HTTP/1.1 503 Service Unavailable\r\n\
                  Content-Type: text/plain\r\n\
                  Content-Length: {}\r\n\
                  Connection: close\r\n\
                  \r\n\
-                 NOT_READY: {}/{} connections",
+                 NOT_READY: Shutting down ({} active connections)",
                 format!(
-                    "NOT_READY: {}/{} connections",
-                    current_connections, max_connections
+                    "NOT_READY: Shutting down ({} active connections)",
+                    current_connections
                 )
                 .len(),
-                current_connections,
-                max_connections
+                current_connections
             )
         } else {
-            // Pod has capacity - mark as ready
-            format!(
-                "HTTP/1.1 200 OK\r\n\
-                 Content-Type: text/plain\r\n\
-                 Content-Length: {}\r\n\
-                 Connection: close\r\n\
-                 \r\n\
-                 READY: {}/{} connections",
+            // Check if pod can accept more connections
+            let current_connections = *active_connections.read().await;
+
+            if current_connections >= max_connections as u32 {
+                // Pod is at capacity - mark as not ready
                 format!(
-                    "READY: {}/{} connections",
-                    current_connections, max_connections
+                    "HTTP/1.1 503 Service Unavailable\r\n\
+                     Content-Type: text/plain\r\n\
+                     Content-Length: {}\r\n\
+                     Connection: close\r\n\
+                     \r\n\
+                     NOT_READY: {}/{} connections",
+                    format!(
+                        "NOT_READY: {}/{} connections",
+                        current_connections, max_connections
+                    )
+                    .len(),
+                    current_connections,
+                    max_connections
                 )
-                .len(),
-                current_connections,
-                max_connections
-            )
+            } else {
+                // Pod has capacity - mark as ready
+                format!(
+                    "HTTP/1.1 200 OK\r\n\
+                     Content-Type: text/plain\r\n\
+                     Content-Length: {}\r\n\
+                     Connection: close\r\n\
+                     \r\n\
+                     READY: {}/{} connections",
+                    format!(
+                        "READY: {}/{} connections",
+                        current_connections, max_connections
+                    )
+                    .len(),
+                    current_connections,
+                    max_connections
+                )
+            }
         }
     } else {
         // /health endpoint - always returns OK for liveness probe

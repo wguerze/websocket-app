@@ -18,6 +18,9 @@ spec:
         app.kubernetes.io/name: websocket-server
         app.kubernetes.io/component: server
     spec:
+      # Allow up to 1 hour for graceful shutdown of active WebSocket connections
+      # Server receives SIGTERM, marks as NotReady, waits for connections to close
+      terminationGracePeriodSeconds: 3600
       containers:
       - name: websocket-server
         image: ghcr.io/williamguerzeder/websocket-app:latest
@@ -69,6 +72,12 @@ spec:
           timeoutSeconds: 1
           failureThreshold: 2
           successThreshold: 1
+        lifecycle:
+          preStop:
+            exec:
+              # Sleep briefly to allow Kubernetes to update Service endpoints
+              # before server receives SIGTERM and starts rejecting connections
+              command: ["/bin/sh", "-c", "sleep 5"]
         securityContext:
           allowPrivilegeEscalation: false
           runAsNonRoot: true
