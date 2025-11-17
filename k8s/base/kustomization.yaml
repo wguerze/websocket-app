@@ -3,13 +3,15 @@ kind: Kustomization
 
 namespace: websocket-app
 
-commonLabels:
-  app.kubernetes.io/managed-by: kustomize
+labels:
+- pairs:
+    app.kubernetes.io/managed-by: kustomize
 
 resources:
 - namespace.yaml
 - deployment.yaml
 - service.yaml
+- ingress.yaml
 
 images:
 - name: ghcr.io/williamguerzeder/websocket-app

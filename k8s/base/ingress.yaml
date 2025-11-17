@@ -1,0 +1,40 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: websocket-server
+  labels:
+    app: websocket-server
+    app.kubernetes.io/name: websocket-server
+    app.kubernetes.io/component: ingress
+  annotations:
+    # WebSocket support
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-connect-timeout: "60"
+
+    # WebSocket upgrade headers (automatically handled by NGINX Ingress)
+    nginx.ingress.kubernetes.io/websocket-services: "websocket-server"
+
+    # Session affinity for WebSocket connections
+    nginx.ingress.kubernetes.io/affinity: "cookie"
+    nginx.ingress.kubernetes.io/affinity-mode: "persistent"
+    nginx.ingress.kubernetes.io/session-cookie-name: "websocket-route"
+    nginx.ingress.kubernetes.io/session-cookie-max-age: "3600"
+spec:
+  ingressClassName: nginx
+  rules:
+  - http:
+      paths:
+      - path: /wsapp
+        pathType: Prefix
+        backend:
+          service:
+            name: websocket-server
+            port:
+              number: 8080
+
+  # TLS configuration (uncomment and configure for HTTPS)
+  # tls:
+  # - hosts:
+  #   - websocket.example.com
+  #   secretName: websocket-tls

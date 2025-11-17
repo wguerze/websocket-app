@@ -1,0 +1,33 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: websocket-server
+  annotations:
+    # Production - enable SSL redirect
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+
+    # Production - stricter timeouts
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "7200"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "7200"
+
+    # Rate limiting (optional)
+    # nginx.ingress.kubernetes.io/limit-connections: "100"
+    # nginx.ingress.kubernetes.io/limit-rps: "50"
+spec:
+  rules:
+  - host: websocket.example.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: websocket-server
+            port:
+              number: 8080
+  # TLS configuration for production
+  tls:
+  - hosts:
+    - websocket.example.com
+    secretName: websocket-tls-production

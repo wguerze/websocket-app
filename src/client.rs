@@ -1,3 +1,4 @@
+use clap::Parser;
 use colored::*;
 use futures_util::{SinkExt, StreamExt};
 use std::collections::HashMap;
@@ -6,7 +7,16 @@ use tokio::sync::mpsc;
 use tokio_tungstenite::connect_async;
 use tokio_tungstenite::tungstenite::Message;
 
-const SERVER_URL: &str = "ws://127.0.0.1:8080";
+const DEFAULT_SERVER_URL: &str = "ws://127.0.0.1:8080";
+
+#[derive(Parser, Debug)]
+#[command(name = "WebSocket Test Client")]
+#[command(author, version, about = "Interactive WebSocket client for testing", long_about = None)]
+struct Args {
+    /// WebSocket server URL to connect to
+    #[arg(short, long, default_value = DEFAULT_SERVER_URL)]
+    server: String,
+}
 
 #[derive(Debug)]
 enum Command {
@@ -27,9 +37,13 @@ struct Connection {
 
 #[tokio::main]
 async fn main() {
+    let args = Args::parse();
+
     println!("{}", "=== WebSocket Test Client ===".bright_blue().bold());
+    println!("Server URL: {}", args.server.bright_cyan());
     println!("Type 'help' for available commands\n");
 
+    let server_url = args.server.clone();
     let mut connections: HashMap<usize, Connection> = HashMap::new();
     let mut next_id = 1;
 
@@ -48,7 +62,7 @@ async fn main() {
         }
 
         match parse_command(input) {
-            Ok(Command::Connect) => match create_connection(next_id, SERVER_URL).await {
+            Ok(Command::Connect) => match create_connection(next_id, &server_url).await {
                 Ok((id, tx, handle)) => {
                     connections.insert(id, Connection { id, tx });
                     tokio::spawn(handle);
@@ -66,7 +80,7 @@ async fn main() {
                 }
                 println!("Creating {} connections...", count);
                 for _ in 0..count {
-                    match create_connection(next_id, SERVER_URL).await {
+                    match create_connection(next_id, &server_url).await {
                         Ok((id, tx, handle)) => {
                             connections.insert(id, Connection { id, tx });
                             tokio::spawn(handle);
@@ -267,6 +281,7 @@ fn parse_command(input: &str) -> Result<Command, String> {
 
 fn print_help() {
     println!("\n{}", "Available Commands:".bright_yellow().bold());
+    println!();
     println!(
         "  {}  {}  - Create a new WebSocket connection",
         "connect".bright_cyan(),
@@ -305,6 +320,10 @@ fn print_help() {
     println!("  {}    - Quit the client", "quit".bright_cyan());
     println!("  {}    - Alias for quit", "exit".bright_cyan());
     println!("  {}      - Alias for quit", "q".bright_cyan());
+    println!();
+    println!("{}", "Note:".bright_yellow().bold());
+    println!("  Use --server or -s flag to specify a custom server URL:");
+    println!("  {} {}", "cargo run --bin client -- --server".dimmed(), "ws://example.com".bright_cyan());
     println!("\n{}", "Examples:".bright_yellow().bold());
     println!("  connect       - Create 1 connection");
     println!("  connect 5     - Create 5 connections");

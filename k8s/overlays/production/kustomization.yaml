@@ -5,16 +5,18 @@ namespace: websocket-app-production
 
 namePrefix: prod-
 
-commonLabels:
-  environment: production
+labels:
+- pairs:
+    environment: production
 
-bases:
+resources:
 - ../../base
 
 patches:
 - path: replica-patch.yaml
 - path: resource-patch.yaml
 - path: image-patch.yaml
+- path: ingress-patch.yaml
 
 configMapGenerator:
 - name: websocket-config

@@ -2,6 +2,7 @@ use futures_util::{SinkExt, StreamExt};
 use log::{error, info, warn};
 use std::net::SocketAddr;
 use std::sync::Arc;
+use tokio::io::AsyncWriteExt;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::Semaphore;
 use tokio::time::{interval, Duration};
@@ -88,7 +89,9 @@ pub async fn run_server(config: ServerConfig) {
                             "Connection limit reached ({}), rejecting connection from {}",
                             config.max_connections, addr
                         );
-                        // Connection will be closed automatically when stream is dropped
+                        tokio::spawn(async move {
+                            let _ = send_503_response(stream).await;
+                        });
                     }
                 }
             }
@@ -211,6 +214,20 @@ async fn decrement_counter(active_connections: Arc<tokio::sync::RwLock<u32>>, ad
     let mut count = active_connections.write().await;
     *count = count.saturating_sub(1);
     info!("Connection closed from {} (total active: {})", addr, *count);
+}
+
+async fn send_503_response(mut stream: TcpStream) -> std::io::Result<()> {
+    let response = "HTTP/1.1 503 Service Unavailable\r\n\
+                    Content-Type: text/plain\r\n\
+                    Content-Length: 50\r\n\
+                    Connection: close\r\n\
+                    \r\n\
+                    Maximum concurrent connections limit reached (10)";
+
+    stream.write_all(response.as_bytes()).await?;
+    stream.flush().await?;
+    stream.shutdown().await?;
+    Ok(())
 }
 
 #[cfg(test)]

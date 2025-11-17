@@ -9,6 +9,7 @@ k8s/
 ├── base/                           # Base Kubernetes resources
 │   ├── deployment.yaml            # Base deployment configuration
 │   ├── service.yaml               # ClusterIP service
+│   ├── ingress.yaml               # Ingress for external access
 │   ├── namespace.yaml             # Namespace definition
 │   └── kustomization.yaml         # Base kustomization
 │
@@ -17,18 +18,21 @@ k8s/
 │   │   ├── kustomization.yaml    # Dev kustomization
 │   │   ├── replica-patch.yaml    # 1 replica for dev
 │   │   ├── resource-patch.yaml   # Minimal resources
-│   │   └── image-patch.yaml      # develop tag
+│   │   ├── image-patch.yaml      # develop tag
+│   │   └── ingress-patch.yaml    # Dev hostname
 │   │
 │   ├── staging/                   # Staging environment
 │   │   ├── kustomization.yaml    # Staging kustomization
 │   │   ├── replica-patch.yaml    # 2 replicas
-│   │   └── image-patch.yaml      # staging tag
+│   │   ├── image-patch.yaml      # staging tag
+│   │   └── ingress-patch.yaml    # Staging hostname
 │   │
 │   └── production/                # Production environment
 │       ├── kustomization.yaml    # Production kustomization
 │       ├── replica-patch.yaml    # 3 replicas
 │       ├── resource-patch.yaml   # Production resources
-│       └── image-patch.yaml      # latest tag
+│       ├── image-patch.yaml      # latest tag
+│       └── ingress-patch.yaml    # Production hostname + TLS
 │
 └── README.md                      # This file
 ```
@@ -195,31 +199,41 @@ cargo run --bin client
 > connect
 ```
 
-### Ingress (Production)
+### Ingress (External Access)
 
-Create an Ingress resource to expose the service:
+Ingress resources are included by default in all environments for external access.
 
-```yaml
-apiVersion: networking.k8s.io/v1
-kind: Ingress
-metadata:
-  name: websocket-ingress
-  namespace: websocket-app-production
-  annotations:
-    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
-    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
-spec:
-  rules:
-  - host: ws.yourdomain.com
-    http:
-      paths:
-      - path: /
-        pathType: Prefix
-        backend:
-          service:
-            name: prod-websocket-server
-            port:
-              number: 8080
+**Hostnames** (update in `ingress-patch.yaml` files):
+- **Development**: `websocket-dev.example.com`
+- **Staging**: `websocket-staging.example.com`
+- **Production**: `websocket.example.com` (with TLS)
+
+**Features**:
+- ✅ WebSocket upgrade support
+- ✅ Long-lived connection timeouts (up to 2 hours)
+- ✅ Session affinity for connection persistence
+- ✅ TLS/SSL ready (production)
+
+**Setup Guide**: See [INGRESS-SETUP.md](../INGRESS-SETUP.md) for complete configuration instructions including:
+- NGINX Ingress Controller installation
+- DNS configuration
+- TLS/SSL certificate setup with cert-manager
+- Testing and troubleshooting
+
+**Quick Start**:
+```bash
+# 1. Install NGINX Ingress Controller
+helm install ingress-nginx ingress-nginx/ingress-nginx -n ingress-nginx --create-namespace
+
+# 2. Update DNS to point to Ingress external IP
+kubectl get svc -n ingress-nginx ingress-nginx-controller
+
+# 3. Update hostnames in ingress-patch.yaml files
+# 4. Deploy
+kubectl apply -k k8s/overlays/production
+
+# 5. Test connection
+websocat ws://websocket.example.com
 ```
 
 ## Updating Deployments

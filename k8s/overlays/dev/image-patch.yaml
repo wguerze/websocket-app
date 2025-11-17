@@ -7,7 +7,7 @@ spec:
     spec:
       containers:
       - name: websocket-server
-        image: ghcr.io/wguerze/websocket-app:main-4acc9cf
+        image: ghcr.io/wguerze/websocket-app:main-ff91df4
         env:
         - name: RUST_LOG
           value: "debug"

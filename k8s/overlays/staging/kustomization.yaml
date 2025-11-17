@@ -5,15 +5,17 @@ namespace: websocket-app-staging
 
 namePrefix: staging-
 
-commonLabels:
-  environment: staging
+labels:
+- pairs:
+    environment: staging
 
-bases:
+resources:
 - ../../base
 
 patches:
 - path: replica-patch.yaml
 - path: image-patch.yaml
+- path: ingress-patch.yaml
 
 configMapGenerator:
 - name: websocket-config
