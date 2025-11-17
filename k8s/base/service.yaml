@@ -6,6 +6,11 @@ metadata:
     app: websocket-server
     app.kubernetes.io/name: websocket-server
     app.kubernetes.io/component: server
+  annotations:
+    # Connection-aware load balancing is achieved via readiness probes
+    # Pods at max capacity (10/10 connections) are marked NotReady
+    # Only pods with available capacity receive new connections
+    service.kubernetes.io/topology-aware-hints: "auto"
 spec:
   type: ClusterIP
   selector:
@@ -15,6 +20,14 @@ spec:
     port: 8080
     targetPort: 8080
     protocol: TCP
+  - name: health
+    port: 8081
+    targetPort: 8081
+    protocol: TCP
+  # Session affinity for WebSocket connections
+  # Combined with readiness probes, this ensures:
+  # 1. New connections only go to pods with available capacity
+  # 2. Existing connections maintain their pod assignment
   sessionAffinity: ClientIP
   sessionAffinityConfig:
     clientIP:

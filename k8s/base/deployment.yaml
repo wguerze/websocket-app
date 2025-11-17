@@ -61,7 +61,7 @@ spec:
           successThreshold: 1
         readinessProbe:
           httpGet:
-            path: /health
+            path: /readiness
             port: 8081
             scheme: HTTP
           initialDelaySeconds: 0

@@ -40,13 +40,23 @@ async fn main() {
 
     let config = ServerConfig::default();
 
-    // Start health check server on port 8081
-    tokio::spawn(run_health_server());
+    // Shared active connections counter for both WebSocket server and health checks
+    let active_connections = Arc::new(tokio::sync::RwLock::new(0u32));
 
-    run_server(config).await;
+    // Start health check server on port 8081
+    let health_active_conn = active_connections.clone();
+    let health_max_conn = config.max_connections;
+    tokio::spawn(async move {
+        run_health_server(health_active_conn, health_max_conn).await;
+    });
+
+    run_server(config, active_connections).await;
 }
 
-pub async fn run_server(config: ServerConfig) {
+pub async fn run_server(
+    config: ServerConfig,
+    active_connections: Arc<tokio::sync::RwLock<u32>>,
+) {
     let listener = TcpListener::bind(&config.addr)
         .await
         .expect("Failed to bind");
@@ -55,7 +65,6 @@ pub async fn run_server(config: ServerConfig) {
 
     // Semaphore to limit concurrent connections
     let connection_limit = Arc::new(Semaphore::new(config.max_connections));
-    let active_connections = Arc::new(tokio::sync::RwLock::new(0u32));
 
     // Spawn periodic connection counter logger
     let active_conn_clone = active_connections.clone();
@@ -234,7 +243,10 @@ async fn send_503_response(mut stream: TcpStream) -> std::io::Result<()> {
     Ok(())
 }
 
-pub async fn run_health_server() {
+pub async fn run_health_server(
+    active_connections: Arc<tokio::sync::RwLock<u32>>,
+    max_connections: usize,
+) {
     let health_addr = "0.0.0.0:8081";
     let listener = match TcpListener::bind(health_addr).await {
         Ok(l) => l,
@@ -251,18 +263,11 @@ pub async fn run_health_server() {
 
     loop {
         match listener.accept().await {
-            Ok((mut stream, _)) => {
+            Ok((stream, _)) => {
+                let active_conn = active_connections.clone();
+                let max_conn = max_connections;
                 tokio::spawn(async move {
-                    let response = "HTTP/1.1 200 OK\r\n\
-                                    Content-Type: text/plain\r\n\
-                                    Content-Length: 2\r\n\
-                                    Connection: close\r\n\
-                                    \r\n\
-                                    OK";
-
-                    let _ = stream.write_all(response.as_bytes()).await;
-                    let _ = stream.flush().await;
-                    let _ = stream.shutdown().await;
+                    handle_health_request(stream, active_conn, max_conn).await;
                 });
             }
             Err(e) => {
@@ -270,6 +275,71 @@ pub async fn run_health_server() {
             }
         }
     }
+}
+
+async fn handle_health_request(
+    mut stream: TcpStream,
+    active_connections: Arc<tokio::sync::RwLock<u32>>,
+    max_connections: usize,
+) {
+    use tokio::io::AsyncReadExt;
+
+    // Read the first line of the HTTP request to determine the path
+    let mut buffer = [0u8; 1024];
+    let n = match stream.read(&mut buffer).await {
+        Ok(n) if n > 0 => n,
+        _ => return, // Connection closed or error
+    };
+
+    let request = String::from_utf8_lossy(&buffer[..n]);
+
+    // Parse the request path (e.g., "GET /readiness HTTP/1.1")
+    let is_readiness = request.starts_with("GET /readiness") || request.starts_with("HEAD /readiness");
+
+    let response = if is_readiness {
+        // Check if pod can accept more connections
+        let current_connections = *active_connections.read().await;
+
+        if current_connections >= max_connections as u32 {
+            // Pod is at capacity - mark as not ready
+            format!(
+                "HTTP/1.1 503 Service Unavailable\r\n\
+                 Content-Type: text/plain\r\n\
+                 Content-Length: {}\r\n\
+                 Connection: close\r\n\
+                 \r\n\
+                 NOT_READY: {}/{} connections",
+                format!("NOT_READY: {}/{} connections", current_connections, max_connections).len(),
+                current_connections,
+                max_connections
+            )
+        } else {
+            // Pod has capacity - mark as ready
+            format!(
+                "HTTP/1.1 200 OK\r\n\
+                 Content-Type: text/plain\r\n\
+                 Content-Length: {}\r\n\
+                 Connection: close\r\n\
+                 \r\n\
+                 READY: {}/{} connections",
+                format!("READY: {}/{} connections", current_connections, max_connections).len(),
+                current_connections,
+                max_connections
+            )
+        }
+    } else {
+        // /health endpoint - always returns OK for liveness probe
+        "HTTP/1.1 200 OK\r\n\
+         Content-Type: text/plain\r\n\
+         Content-Length: 2\r\n\
+         Connection: close\r\n\
+         \r\n\
+         OK".to_string()
+    };
+
+    let _ = stream.write_all(response.as_bytes()).await;
+    let _ = stream.flush().await;
+    let _ = stream.shutdown().await;
 }
 
 #[cfg(test)]
