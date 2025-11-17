@@ -53,10 +53,7 @@ async fn main() {
     run_server(config, active_connections).await;
 }
 
-pub async fn run_server(
-    config: ServerConfig,
-    active_connections: Arc<tokio::sync::RwLock<u32>>,
-) {
+pub async fn run_server(config: ServerConfig, active_connections: Arc<tokio::sync::RwLock<u32>>) {
     let listener = TcpListener::bind(&config.addr)
         .await
         .expect("Failed to bind");
@@ -294,7 +291,8 @@ async fn handle_health_request(
     let request = String::from_utf8_lossy(&buffer[..n]);
 
     // Parse the request path (e.g., "GET /readiness HTTP/1.1")
-    let is_readiness = request.starts_with("GET /readiness") || request.starts_with("HEAD /readiness");
+    let is_readiness =
+        request.starts_with("GET /readiness") || request.starts_with("HEAD /readiness");
 
     let response = if is_readiness {
         // Check if pod can accept more connections
@@ -309,7 +307,11 @@ async fn handle_health_request(
                  Connection: close\r\n\
                  \r\n\
                  NOT_READY: {}/{} connections",
-                format!("NOT_READY: {}/{} connections", current_connections, max_connections).len(),
+                format!(
+                    "NOT_READY: {}/{} connections",
+                    current_connections, max_connections
+                )
+                .len(),
                 current_connections,
                 max_connections
             )
@@ -322,7 +324,11 @@ async fn handle_health_request(
                  Connection: close\r\n\
                  \r\n\
                  READY: {}/{} connections",
-                format!("READY: {}/{} connections", current_connections, max_connections).len(),
+                format!(
+                    "READY: {}/{} connections",
+                    current_connections, max_connections
+                )
+                .len(),
                 current_connections,
                 max_connections
             )
@@ -334,7 +340,8 @@ async fn handle_health_request(
          Content-Length: 2\r\n\
          Connection: close\r\n\
          \r\n\
-         OK".to_string()
+         OK"
+        .to_string()
     };
 
     let _ = stream.write_all(response.as_bytes()).await;
